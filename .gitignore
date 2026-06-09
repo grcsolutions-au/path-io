@@ -28,3 +28,4 @@ dist/
 hie.yaml
 stack.yaml
 stack.yaml.lock
+/.direnv
