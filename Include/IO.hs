@@ -16,7 +16,7 @@
 -- "Path" module. It also implements some extra functionality like recursive
 -- scanning and copying of directories, working with temporary
 -- files\/directories, etc.
-module Path.IO
+module MODULE_NAME
   ( -- * Actions on directories
     createDir,
     createDirIfMissing,
@@ -132,7 +132,7 @@ import Data.Kind (Type)
 import Data.List ((\\))
 import Data.Set qualified as S
 import Data.Time (UTCTime)
-import Path
+import PATH_MODULE
 import System.Directory qualified as D
 import System.FilePath qualified as F
 import System.IO (Handle)
