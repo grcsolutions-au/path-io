@@ -2,6 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 -- |
 -- Module      :  Path.IO
@@ -133,12 +134,57 @@ import Data.List ((\\))
 import Data.Set qualified as S
 import Data.Time (UTCTime)
 import PATH_MODULE
+#ifdef DIRECTORY_MODULE
+import DIRECTORY_MODULE qualified as D
+#else
 import System.Directory qualified as D
+#endif
+#ifdef FILEPATH_MODULE
+import FILEPATH_MODULE qualified as F
+#else
 import System.FilePath qualified as F
+#endif
 import System.IO (Handle)
 import System.IO.Error (isDoesNotExistError)
+
+#ifdef TEMPFILES_MODULE
+import TEMPFILES_MODULE qualified as T
+#else
 import System.IO.Temp qualified as T
+#endif
+
 import System.PosixCompat.Files qualified as P
+#ifndef TO_RAW_FILEPATH
+import System.PosixCompat.Files (getFileStatus)
+#endif
+
+#ifdef FILEPATH_TYPE
+import Prelude hiding (FilePath)
+#endif
+
+#ifdef EXTRA_IMPORTS
+import EXTRA_IMPORTS
+#endif
+
+#ifdef FILEPATH_TYPE
+type FilePath = FILEPATH_TYPE
+#endif
+
+#ifdef FILE_TEMPLATE
+type FileTemplate = FILE_TEMPLATE
+#else
+type FileTemplate = String
+#endif
+
+#ifdef TO_RAW_FILEPATH
+getFileStatus :: FilePath -> IO P.FileStatus
+getFileStatus = TO_RAW_FILEPATH >=> P.getFileStatus 
+#endif
+
+#ifdef TOFILEPATH
+toFilePath :: Path b t -> FilePath
+toFilePath = TOFILEPATH
+#endif
 
 ----------------------------------------------------------------------------
 -- Actions on directories
@@ -418,7 +464,7 @@ listDirRel ::
   m ([Path Rel Dir], [Path Rel File])
 listDirRel path = liftIO $ do
   raw <- liftD D.getDirectoryContents path
-  items <- forM (raw \\ [".", ".."]) $ \item -> do
+  items <- forM (raw \\ [[pstr|.|], [pstr|..|]]) $ \item -> do
     isDir <- liftIO (D.doesDirectoryExist $ toFilePath path F.</> item)
     if isDir
       then Left <$> parseRelDir item
@@ -655,7 +701,7 @@ walkDir handler topdir =
                   (MaybeT . walkAvoidLoop traversed)
                   ds
     checkLoop traversed dir = do
-      st <- liftIO $ P.getFileStatus (fromAbsDir dir)
+      st <- liftIO $ getFileStatus (fromAbsDir dir)
       let ufid = (P.deviceID st, P.fileID st)
       return $
         if S.member ufid traversed
@@ -699,13 +745,13 @@ walkDirRel handler topdir' = do
                     (MaybeT . walkAvoidLoop traversed)
                     ((curdir </>) <$> ds)
       checkLoop traversed dir = do
-        st <- liftIO $ P.getFileStatus (fromAbsDir dir)
+        st <- liftIO $ getFileStatus (fromAbsDir dir)
         let ufid = (P.deviceID st, P.fileID st)
         return $
           if S.member ufid traversed
             then Nothing
             else Just (S.insert ufid traversed)
-  void (walkAvoidLoop S.empty $(mkRelDir "."))
+  void (walkAvoidLoop S.empty [reldir|.|])
 
 -- | Similar to 'walkDir' but accepts a 'Monoid'-returning output writer as
 -- well. Values returned by the output writer invocations are accumulated
@@ -913,7 +959,7 @@ getHomeDir = liftIO D.getHomeDirectory >>= resolveDir'
 getAppUserDataDir ::
   (MonadIO m) =>
   -- | Name of application (used in path construction)
-  String ->
+  FilePath ->
   m (Path Abs Dir)
 getAppUserDataDir = liftIO . (>>= parseAbsDir) . D.getAppUserDataDirectory
 
@@ -991,7 +1037,7 @@ getXdgDir ::
   Maybe (Path Rel Dir) ->
   m (Path Abs Dir)
 getXdgDir xdgDir suffix =
-  liftIO $ (D.getXdgDirectory xdgDir $ maybe "" toFilePath suffix) >>= parseAbsDir
+  liftIO $ (D.getXdgDirectory xdgDir $ maybe ([pstr||]) toFilePath suffix) >>= parseAbsDir
 
 -- | Similar to 'getXdgDir' but retrieves the entire list of XDG
 -- directories.
@@ -1508,7 +1554,7 @@ withTempFile ::
   -- | Directory to create the file in
   Path b Dir ->
   -- | File name template, see 'openTempFile'
-  String ->
+  FileTemplate ->
   -- | Callback that can use the file
   (Path Abs File -> Handle -> m a) ->
   m a
@@ -1528,7 +1574,7 @@ withTempDir ::
   -- | Directory to create the file in
   Path b Dir ->
   -- | Directory name template, see 'openTempFile'
-  String ->
+  FileTemplate ->
   -- | Callback that can use the directory
   (Path Abs Dir -> m a) ->
   m a
@@ -1546,7 +1592,7 @@ withTempDir path t action = do
 withSystemTempFile ::
   (MonadIO m, MonadMask m) =>
   -- | File name template, see 'openTempFile'
-  String ->
+  FileTemplate ->
   -- | Callback that can use the file
   (Path Abs File -> Handle -> m a) ->
   m a
@@ -1564,7 +1610,7 @@ withSystemTempFile t action =
 withSystemTempDir ::
   (MonadIO m, MonadMask m) =>
   -- | Directory name template, see 'openTempFile'
-  String ->
+  FileTemplate ->
   -- | Callback that can use the directory
   (Path Abs Dir -> m a) ->
   m a
@@ -1594,7 +1640,7 @@ openTempFile ::
   Path b Dir ->
   -- | File name template; if the template is "foo.ext" then the created
   -- file will be @\"fooXXX.ext\"@ where @XXX@ is some random number
-  String ->
+  FileTemplate ->
   -- | Name of created file and its 'Handle'
   m (Path Abs File, Handle)
 openTempFile path t = liftIO $ do
@@ -1616,7 +1662,7 @@ openBinaryTempFile ::
   -- | Directory to create file in
   Path b Dir ->
   -- | File name template, see 'openTempFile'
-  String ->
+  FileTemplate ->
   -- | Name of created file and its 'Handle'
   m (Path Abs File, Handle)
 openBinaryTempFile path t = liftIO $ do
@@ -1636,7 +1682,7 @@ createTempDir ::
   -- | Directory to create file in
   Path b Dir ->
   -- | Directory name template, see 'openTempFile'
-  String ->
+  FileTemplate ->
   -- | Name of created temporary directory
   m (Path Abs Dir)
 createTempDir path t =

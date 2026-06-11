@@ -1,6 +1,6 @@
 cabal-version:   2.4
 name:            path-io
-version:         1.8.2
+version:         1.8.3
 license:         BSD-3-Clause
 license-file:    LICENSE.md
 maintainer:      Mark Karpov <markkarpov92@gmail.com>
@@ -28,6 +28,7 @@ flag dev
 library
     exposed-modules:  Path.IO
                     , OsPath.IO
+    other-modules:    OsPath.ExtraImports
     default-language: GHC2021
     build-depends:
         base >=4.15 && <5,
@@ -37,7 +38,9 @@ library
         exceptions >=0.8 && <0.11,
         filepath >=1.2 && <1.6,
         path >=0.7.1 && <0.10,
+        os-string,
         temporary >=1.1 && <1.4,
+        temporary-ospath,
         time >=1.4 && <1.16,
         transformers >=0.3 && <0.7,
         unix-compat
